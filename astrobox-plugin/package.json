@@ -1,0 +1,21 @@
+{
+  "name": "forward-timer-astrobox-plugin",
+  "version": "1.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "rspack build",
+    "package": "pnpm run build && rm -f ForwardTimer.abp && cd dist && if command -v zip >/dev/null 2>&1; then zip -r -q ../ForwardTimer.abp ./*; elif command -v bsdtar >/dev/null 2>&1; then bsdtar -a -cf ../ForwardTimer.abp ./*; else echo 'zip or bsdtar is required' >&2; exit 1; fi",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "astrobox-plugin-sdk": "1.1.6"
+  },
+  "devDependencies": {
+    "@rspack/cli": "1.4.6",
+    "@rspack/core": "1.4.6",
+    "ts-node": "10.9.2",
+    "typescript": "5.8.3"
+  }
+}
+

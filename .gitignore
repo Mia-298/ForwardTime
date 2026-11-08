@@ -1,0 +1,14 @@
+node_modules/
+dist/
+build/
+target/
+*.abp
+*.rpk
+.DS_Store
+
+# Keep the AstroBox marketplace payload while ignoring other build output.
+!astrobox-plugin-v2/dist/
+!astrobox-plugin-v2/dist/manifest.json
+!astrobox-plugin-v2/dist/forward_timer_config.wasm
+!astrobox-plugin-v2/dist/icon.png
+

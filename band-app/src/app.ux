@@ -1,0 +1,11 @@
+<script>
+export default {
+  onCreate() {
+    console.log("正计时 app created")
+  },
+  onDestroy() {
+    console.log("正计时 app destroyed")
+  }
+}
+</script>
+

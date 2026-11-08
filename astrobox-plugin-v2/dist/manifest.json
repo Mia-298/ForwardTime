@@ -1,0 +1,17 @@
+{
+  "name": "正计时配置",
+  "icon": "icon.png",
+  "version": "1.1.0",
+  "description": "小米手环 9 正计时项目管理、同步和历史记录查询",
+  "author": "ABox User",
+  "website": "https://abox.run/",
+  "entry": "forward_timer_config.wasm",
+  "wasi_version": 3,
+  "api_level": 4,
+  "permissions": [
+    "device",
+    "register_interconnect_recv",
+    "interconnect"
+  ],
+  "additional_files": []
+}

@@ -1,0 +1,1054 @@
+<template>
+  <div class="page">
+    <div class="home-view" if="{{viewMode == 'home'}}">
+      <div class="top-safe"></div>
+      <div class="header-row">
+        <div class="header-copy">
+          <text class="eyebrow">今日 {{todayCount}} 条</text>
+          <text class="title">选择项目</text>
+        </div>
+        <div class="sync-dot" style="background-color: {{syncColor}}"></div>
+      </div>
+
+      <list class="project-list" bounces="true">
+        <list-item class="empty" type="home-empty" if="{{projects.length == 0}}">
+          <text class="empty-title">还没有项目</text>
+          <text class="empty-copy">到项目页添加预设，或从手机端新建</text>
+        </list-item>
+        <list-item class="project-card" type="project" for="{{projects}}" @click="startProject($item)">
+          <div class="project-accent" style="background-color: {{$item.color}}"></div>
+          <text class="project-name">{{$item.name}}</text>
+          <text class="project-arrow">›</text>
+        </list-item>
+        <list-item class="list-spacer" type="home-spacer"></list-item>
+      </list>
+
+      <div class="bottom-nav">
+        <div class="nav-button" @click="openToday">
+          <text class="nav-label">记录</text>
+        </div>
+        <div class="nav-button nav-primary" @click="openManage">
+          <text class="nav-label nav-label-dark">项目</text>
+        </div>
+      </div>
+      <div class="bottom-safe"></div>
+    </div>
+
+    <div class="timer-view" if="{{viewMode == 'timer'}}">
+      <div class="top-safe"></div>
+      <text class="timer-project">{{activeProjectName}}</text>
+      <div class="timer-ring" style="border-color: {{activeColor}}">
+        <text class="timer-value">{{elapsedText}}</text>
+        <text class="timer-state">{{timerStateText}}</text>
+      </div>
+      <div class="timer-actions">
+        <div class="action-button secondary" @click="togglePause">
+          <text class="action-label">{{pauseButtonText}}</text>
+        </div>
+        <div class="action-button complete" @click="finishTimer">
+          <text class="action-label action-label-dark">完成</text>
+        </div>
+      </div>
+      <div class="cancel-button" @click="cancelTimer">
+        <text class="cancel-label">取消本次</text>
+      </div>
+      <div class="bottom-safe"></div>
+    </div>
+
+    <div class="list-view" if="{{viewMode == 'today'}}">
+      <div class="top-safe"></div>
+      <div class="sub-header">
+        <div class="back-button" @click="backHome"><text class="back-label">‹</text></div>
+        <div class="sub-copy">
+          <text class="eyebrow">{{todayDurationText}}</text>
+          <text class="sub-title">今日 {{todayCount}} 条</text>
+        </div>
+      </div>
+      <list class="record-list" bounces="true">
+        <list-item class="empty" type="record-empty" if="{{todayRecords.length == 0}}">
+          <text class="empty-title">今天还没有记录</text>
+          <text class="empty-copy">完成一次计时后会显示在这里</text>
+        </list-item>
+        <list-item class="record-row" type="record" for="{{todayRecords}}">
+          <text class="record-name">{{$item.projectName}}</text>
+          <div class="record-meta">
+            <text class="record-duration">{{$item.durationText}}</text>
+            <text class="record-time">{{$item.timeText}}</text>
+          </div>
+        </list-item>
+        <list-item class="list-spacer" type="record-spacer"></list-item>
+      </list>
+    </div>
+
+    <div class="list-view" if="{{viewMode == 'manage'}}">
+      <div class="top-safe"></div>
+      <div class="manage-header">
+        <div class="manage-back-row">
+          <div class="back-button" @click="backHome"><text class="back-label">‹</text></div>
+          <text class="manage-count">{{projects.length}} 个项目</text>
+        </div>
+        <text class="manage-title">项目管理</text>
+      </div>
+      <list class="manage-list" bounces="true">
+        <list-item class="custom-add-row" type="custom-add" @click="addCustomProject">
+          <text class="custom-add-plus">＋</text>
+          <text class="custom-add-label">添加自定义</text>
+        </list-item>
+        <list-item class="section-row" type="project-heading">
+          <text class="section-label">当前项目（{{projects.length}}）</text>
+        </list-item>
+        <list-item class="manage-row" type="managed-project" for="{{projects}}">
+          <div class="preset-dot" style="background-color: {{$item.color}}"></div>
+          <text class="managed-name">{{$item.name}}</text>
+          <div class="delete-button" @click="deleteProject($item.id)">
+            <text class="delete-label">删</text>
+          </div>
+        </list-item>
+        <list-item class="list-spacer" type="manage-spacer"></list-item>
+      </list>
+    </div>
+
+  </div>
+</template>
+
+<script>
+import storage from "@system.storage"
+import vibrator from "@system.vibrator"
+import interconnect from "@system.interconnect"
+
+const STORAGE_KEY = "forward_timer_state_v1"
+const PROTOCOL = "forward-timer/v1"
+const CATEGORY_ORDER = ["工作", "阅读", "学习", "运动", "娱乐", "个人", "自定义", "其他"]
+const CATEGORY_COLORS = {
+  "工作": "#55D6BE",
+  "阅读": "#FF9F1C",
+  "学习": "#FFD166",
+  "运动": "#FF6B6B",
+  "娱乐": "#8EC5FF",
+  "个人": "#C6A6FF",
+  "自定义": "#72DDF7",
+  "其他": "#C6A6FF"
+}
+
+const LEGACY_DEFAULT_IDS = ["p_focus", "p_read", "p_run"]
+
+function defaultProjects() {
+  return [
+    { id: "p_default_work", name: "工作", category: "工作", color: "#55D6BE", updatedAt: 2 },
+    { id: "p_default_read", name: "阅读", category: "阅读", color: "#FF9F1C", updatedAt: 2 },
+    { id: "p_default_study", name: "学习", category: "学习", color: "#FFD166", updatedAt: 2 },
+    { id: "p_default_sport", name: "运动", category: "运动", color: "#FF6B6B", updatedAt: 2 },
+    { id: "p_default_fun", name: "娱乐", category: "娱乐", color: "#8EC5FF", updatedAt: 2 },
+    { id: "p_default_personal", name: "个人", category: "个人", color: "#C6A6FF", updatedAt: 2 }
+  ]
+}
+
+function migrateProjects(items, includeDefaults) {
+  const projects = (Array.isArray(items) ? items : []).filter(function(item) {
+    return item && LEGACY_DEFAULT_IDS.indexOf(item.id) < 0
+  })
+  if (includeDefaults) {
+    const names = projects.map(function(item) { return item.name })
+    defaultProjects().forEach(function(project) {
+      if (names.indexOf(project.name) < 0) projects.push(project)
+    })
+  }
+  return sortProjects(projects)
+}
+
+function categoryIndex(category) {
+  const index = CATEGORY_ORDER.indexOf(category)
+  return index < 0 ? CATEGORY_ORDER.length : index
+}
+
+function sortProjects(items) {
+  return items.slice().sort(function(a, b) {
+    const categoryDiff = categoryIndex(a.category) - categoryIndex(b.category)
+    if (categoryDiff !== 0) return categoryDiff
+    return a.name > b.name ? 1 : a.name < b.name ? -1 : 0
+  })
+}
+
+function sortRecords(items) {
+  return items.slice().sort(function(a, b) {
+    const categoryDiff = categoryIndex(a.category) - categoryIndex(b.category)
+    if (categoryDiff !== 0) return categoryDiff
+    return b.endedAt - a.endedAt
+  })
+}
+
+function pad(value) {
+  return ("0" + value).slice(-2)
+}
+
+function dateKey(timestamp) {
+  const date = new Date(timestamp)
+  return date.getFullYear() + "-" + pad(date.getMonth() + 1) + "-" + pad(date.getDate())
+}
+
+function formatElapsed(totalSeconds) {
+  const seconds = Math.max(0, totalSeconds || 0)
+  const hours = Math.floor(seconds / 3600)
+  const minutes = Math.floor((seconds % 3600) / 60)
+  const remain = seconds % 60
+  if (hours > 0) return pad(hours) + ":" + pad(minutes) + ":" + pad(remain)
+  return pad(minutes) + ":" + pad(remain)
+}
+
+function formatDuration(totalSeconds) {
+  const minutes = Math.floor(totalSeconds / 60)
+  const seconds = totalSeconds % 60
+  if (minutes >= 60) return Math.floor(minutes / 60) + "时" + (minutes % 60) + "分"
+  if (minutes > 0) return minutes + "分" + (seconds > 0 ? seconds + "秒" : "")
+  return seconds + "秒"
+}
+
+export default {
+  private: {
+    viewMode: "home",
+    projects: [],
+    deletedProjects: [],
+    records: [],
+    active: null,
+    elapsedText: "00:00",
+    activeProjectName: "",
+    activeColor: "#55D6BE",
+    timerStateText: "计时中",
+    pauseButtonText: "暂停",
+    todayRecords: [],
+    todayCount: 0,
+    todayDurationText: "共 0 分钟",
+    syncColor: "#666666",
+    tickTimer: null,
+    conn: null
+  },
+
+  onInit() {
+    this.projects = sortProjects(defaultProjects())
+    this.deletedProjects = []
+    this.records = []
+    this.loadState()
+    this.startTicking()
+  },
+
+  onReady() {
+    this.setupInterconnect()
+  },
+
+  onShow() {
+    this.setupInterconnect()
+    this.refreshDerived()
+    this.sendSnapshot()
+  },
+
+  onHide() {
+    this.saveState()
+  },
+
+  onDestroy() {
+    this.saveState()
+    if (this.tickTimer) clearInterval(this.tickTimer)
+  },
+
+  onBackPress() {
+    if (this.viewMode !== "home") {
+      this.backHome()
+      return true
+    }
+    return false
+  },
+
+  vibrate(mode) {
+    try {
+      vibrator.vibrate({ mode: mode || "short" })
+    } catch (e) {}
+  },
+
+  startTicking() {
+    const self = this
+    if (self.tickTimer) clearInterval(self.tickTimer)
+    self.tickTimer = setInterval(function() {
+      self.refreshElapsed()
+    }, 1000)
+  },
+
+  getElapsedSeconds() {
+    if (!this.active) return 0
+    let seconds = this.active.accumulatedSec || 0
+    if (this.active.running && this.active.segmentStartedAt) {
+      seconds += Math.floor((Date.now() - this.active.segmentStartedAt) / 1000)
+    }
+    return Math.max(0, seconds)
+  },
+
+  refreshElapsed() {
+    if (!this.active) return
+    this.elapsedText = formatElapsed(this.getElapsedSeconds())
+  },
+
+  refreshDerived() {
+    this.projects = sortProjects(this.projects || [])
+    const today = dateKey(Date.now())
+    const records = (this.records || []).filter(function(record) {
+      return record.dateKey === today
+    }).map(function(record) {
+      const ended = new Date(record.endedAt)
+      return Object.assign({}, record, {
+        durationText: formatDuration(record.durationSec),
+        timeText: pad(ended.getHours()) + ":" + pad(ended.getMinutes())
+      })
+    })
+    this.todayRecords = sortRecords(records)
+    this.todayCount = records.length
+    const totalSec = records.reduce(function(sum, item) { return sum + item.durationSec }, 0)
+    this.todayDurationText = "共 " + formatDuration(totalSec)
+
+    if (this.active) {
+      const project = this.projects.find(function(item) { return item.id === this.active.projectId }.bind(this))
+      this.activeProjectName = this.active.projectName || (project ? project.name : "计时项目")
+      this.activeColor = this.active.color || (project ? project.color : "#C6A6FF")
+      this.timerStateText = this.active.running ? "计时中" : "已暂停"
+      this.pauseButtonText = this.active.running ? "暂停" : "继续"
+      this.refreshElapsed()
+    }
+  },
+
+  loadState() {
+    const self = this
+    try {
+      storage.get({
+        key: STORAGE_KEY,
+        default: "",
+        success: function(value) {
+          if (!value) {
+            self.refreshDerived()
+            self.saveState()
+            self.sendSnapshot()
+            return
+          }
+          try {
+            const state = JSON.parse(value)
+            self.deletedProjects = Array.isArray(state.deletedProjects) ? state.deletedProjects : []
+            const storedProjects = Array.isArray(state.projects) ? state.projects : []
+            const needsMigration = Number(state.version || 1) < 2
+            if (needsMigration) {
+              const migratedAt = Date.now()
+              storedProjects.forEach(function(project) {
+                if (project && LEGACY_DEFAULT_IDS.indexOf(project.id) >= 0) {
+                  const exists = self.deletedProjects.some(function(item) { return item.id === project.id })
+                  if (!exists) self.deletedProjects.push({ id: project.id, deletedAt: migratedAt })
+                }
+              })
+            }
+            self.projects = migrateProjects(storedProjects, needsMigration)
+            self.records = Array.isArray(state.records) ? state.records : []
+            self.active = state.active || null
+            if (self.active) self.viewMode = "timer"
+          } catch (e) {
+            self.projects = sortProjects(defaultProjects())
+            self.deletedProjects = []
+            self.records = []
+            self.active = null
+          }
+          self.refreshDerived()
+          self.sendSnapshot()
+        },
+        fail: function() {
+          self.refreshDerived()
+          self.sendSnapshot()
+        }
+      })
+    } catch (e) {
+      self.refreshDerived()
+    }
+  },
+
+  saveState() {
+    const payload = {
+      version: 2,
+      projects: this.projects,
+      deletedProjects: this.deletedProjects.slice(-200),
+      records: this.records.slice(-1000),
+      active: this.active
+    }
+    try {
+      storage.set({
+        key: STORAGE_KEY,
+        value: JSON.stringify(payload),
+        success: function() {},
+        fail: function() {}
+      })
+    } catch (e) {}
+  },
+
+  startProject(project) {
+    if (!project || this.active) return
+    this.vibrate("short")
+    const now = Date.now()
+    this.active = {
+      projectId: project.id,
+      projectName: project.name,
+      category: project.category,
+      color: project.color,
+      recordStartedAt: now,
+      segmentStartedAt: now,
+      accumulatedSec: 0,
+      running: true
+    }
+    this.viewMode = "timer"
+    this.refreshDerived()
+    this.saveState()
+  },
+
+  togglePause() {
+    if (!this.active) return
+    this.vibrate("short")
+    if (this.active.running) {
+      this.active.accumulatedSec = this.getElapsedSeconds()
+      this.active.running = false
+      this.active.segmentStartedAt = 0
+    } else {
+      this.active.running = true
+      this.active.segmentStartedAt = Date.now()
+    }
+    this.refreshDerived()
+    this.saveState()
+  },
+
+  finishTimer() {
+    if (!this.active) return
+    this.vibrate("long")
+    const endedAt = Date.now()
+    const durationSec = Math.max(1, this.getElapsedSeconds())
+    const completedProjectId = this.active.projectId
+    const record = {
+      id: "r_" + endedAt + "_" + Math.floor(Math.random() * 10000),
+      projectId: this.active.projectId,
+      projectName: this.active.projectName,
+      category: this.active.category,
+      startedAt: this.active.recordStartedAt,
+      endedAt: endedAt,
+      durationSec: durationSec,
+      dateKey: dateKey(endedAt)
+    }
+    this.records = this.records.concat([record]).slice(-1000)
+    this.active = null
+    const wasDeleted = this.deletedProjects.some(function(item) { return item.id === completedProjectId })
+    if (wasDeleted) {
+      this.projects = this.projects.filter(function(item) { return item.id !== completedProjectId })
+    }
+    this.viewMode = "today"
+    this.refreshDerived()
+    this.saveState()
+    this.sendSnapshot()
+  },
+
+  cancelTimer() {
+    this.vibrate("short")
+    this.active = null
+    this.viewMode = "home"
+    this.refreshDerived()
+    this.saveState()
+  },
+
+  openToday() {
+    this.vibrate("short")
+    this.refreshDerived()
+    this.viewMode = "today"
+  },
+
+  openManage() {
+    this.vibrate("short")
+    this.viewMode = "manage"
+  },
+
+  backHome() {
+    this.vibrate("short")
+    this.viewMode = this.active ? "timer" : "home"
+    this.refreshDerived()
+  },
+
+  addCustomProject() {
+    this.vibrate("short")
+    const names = this.projects.map(function(item) { return item.name })
+    let index = 1
+    while (names.indexOf("自定义" + index) >= 0) index += 1
+    const name = "自定义" + index
+    const now = Date.now()
+    this.projects = sortProjects(this.projects.concat([{
+      id: "p_band_" + now + "_" + Math.floor(Math.random() * 1000),
+      name: name,
+      category: "自定义",
+      color: CATEGORY_COLORS["自定义"],
+      updatedAt: now
+    }]))
+    this.refreshDerived()
+    this.saveState()
+    this.sendSnapshot()
+  },
+
+  deleteProject(id) {
+    if (this.active && this.active.projectId === id) {
+      this.vibrate("long")
+      return
+    }
+    this.vibrate("short")
+    const deletedAt = Date.now()
+    this.projects = this.projects.filter(function(item) { return item.id !== id })
+    this.rememberDeletion(id, deletedAt)
+    this.refreshDerived()
+    this.saveState()
+    this.sendMessage({ type: "project_deleted", data: { id: id, deletedAt: deletedAt } })
+    this.sendSnapshot()
+  },
+
+  setupInterconnect() {
+    const self = this
+    try {
+      if (!self.conn) self.conn = interconnect.instance()
+      self.conn.onmessage = function(response) {
+        self.syncColor = "#55D6BE"
+        self.handleIncoming(response ? response.data : null)
+      }
+      self.conn.onopen = function() {
+        self.syncColor = "#55D6BE"
+        self.sendSnapshot()
+      }
+      self.conn.onclose = function() {
+        self.syncColor = "#666666"
+      }
+      self.conn.onerror = function() {
+        self.syncColor = "#FF6B6B"
+      }
+    } catch (e) {
+      self.syncColor = "#FF6B6B"
+    }
+  },
+
+  handleIncoming(raw) {
+    let message = raw
+    try {
+      if (typeof message === "string") message = JSON.parse(message)
+    } catch (e) {
+      return
+    }
+    if (!message || message.protocol !== PROTOCOL) return
+    if (message.type === "sync_request") {
+      this.sendSnapshot()
+      return
+    }
+    if (message.type === "project_upsert" && message.data) {
+      this.upsertProject(message.data)
+      return
+    }
+    if (message.type === "project_delete" && message.data) {
+      this.deleteProjectFromPhone(message.data.id, message.data.deletedAt)
+    }
+  },
+
+  upsertProject(project) {
+    if (!project.id || !project.name) return
+    const incoming = {
+      id: project.id,
+      name: project.name.slice(0, 12),
+      category: CATEGORY_ORDER.indexOf(project.category) >= 0 ? project.category : "其他",
+      color: project.color || CATEGORY_COLORS[project.category] || "#C6A6FF",
+      updatedAt: project.updatedAt || Date.now()
+    }
+    const deletion = this.deletedProjects.find(function(item) { return item.id === incoming.id })
+    if (deletion && deletion.deletedAt >= incoming.updatedAt) return
+    this.deletedProjects = this.deletedProjects.filter(function(item) { return item.id !== incoming.id })
+    const items = this.projects.slice()
+    const index = items.findIndex(function(item) { return item.id === incoming.id })
+    if (index >= 0) {
+      if ((items[index].updatedAt || 0) <= incoming.updatedAt) items[index] = incoming
+    } else {
+      items.push(incoming)
+    }
+    this.projects = sortProjects(items)
+    this.refreshDerived()
+    this.saveState()
+    this.sendSnapshot()
+  },
+
+  deleteProjectFromPhone(id, deletedAt) {
+    if (!id) return
+    this.rememberDeletion(id, deletedAt || Date.now())
+    if (this.active && this.active.projectId === id) {
+      this.saveState()
+      this.sendSnapshot()
+      return
+    }
+    this.projects = this.projects.filter(function(item) { return item.id !== id })
+    this.refreshDerived()
+    this.saveState()
+    this.sendSnapshot()
+  },
+
+  sendSnapshot() {
+    this.sendMessage({
+      type: "snapshot",
+      data: {
+        projects: this.projects,
+        deletedProjects: this.deletedProjects.slice(-200),
+        records: this.records.slice(-1000)
+      }
+    })
+  },
+
+  rememberDeletion(id, deletedAt) {
+    const timestamp = deletedAt || Date.now()
+    const remaining = this.deletedProjects.filter(function(item) { return item.id !== id })
+    remaining.push({ id: id, deletedAt: timestamp })
+    remaining.sort(function(a, b) { return a.deletedAt - b.deletedAt })
+    this.deletedProjects = remaining.slice(-200)
+  },
+
+  sendMessage(message) {
+    const self = this
+    if (!self.conn) return
+    const envelope = Object.assign({
+      protocol: PROTOCOL,
+      sentAt: Date.now()
+    }, message)
+    try {
+      self.conn.send({
+        data: JSON.stringify(envelope),
+        success: function() { self.syncColor = "#55D6BE" },
+        fail: function() { self.syncColor = "#FF6B6B" }
+      })
+    } catch (e) {
+      self.syncColor = "#FF6B6B"
+    }
+  }
+}
+</script>
+
+<style>
+.page {
+  width: 192px;
+  height: 490px;
+  background-color: #000000;
+  color: #ffffff;
+  flex-direction: column;
+}
+
+.home-view, .timer-view, .list-view {
+  width: 192px;
+  height: 490px;
+  flex-direction: column;
+  background-color: #000000;
+}
+
+.top-safe {
+  width: 192px;
+  height: 52px;
+}
+
+.bottom-safe {
+  width: 192px;
+  height: 40px;
+}
+
+.header-row {
+  width: 148px;
+  height: 64px;
+  margin-left: 22px;
+  margin-right: 22px;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.header-copy, .sub-copy, .record-meta {
+  flex-direction: column;
+}
+
+.eyebrow, .record-time, .section-label {
+  color: #9c9ca4;
+  font-size: 18px;
+}
+
+.title {
+  color: #ffffff;
+  font-size: 32px;
+  font-weight: bold;
+}
+
+.sync-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 6px;
+}
+
+.project-list {
+  width: 192px;
+  height: 278px;
+}
+
+.project-card {
+  width: 172px;
+  height: 72px;
+  margin-left: 10px;
+  margin-right: 10px;
+  margin-bottom: 8px;
+  padding-right: 10px;
+  background-color: #171719;
+  border-radius: 8px;
+  flex-direction: row;
+  align-items: center;
+}
+
+.project-accent {
+  width: 5px;
+  height: 48px;
+  border-radius: 3px;
+  margin-left: 9px;
+  margin-right: 10px;
+}
+
+.project-name, .record-name, .managed-name {
+  color: #ffffff;
+  font-size: 26px;
+  font-weight: bold;
+  lines: 1;
+  text-overflow: ellipsis;
+}
+
+.project-name {
+  width: 128px;
+}
+
+.project-arrow {
+  color: #85858d;
+  font-size: 30px;
+}
+
+.bottom-nav {
+  width: 144px;
+  height: 56px;
+  margin-left: 24px;
+  margin-right: 24px;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.nav-button {
+  width: 68px;
+  height: 52px;
+  border-radius: 8px;
+  background-color: #242428;
+  justify-content: center;
+  align-items: center;
+}
+
+.nav-primary {
+  background-color: #55D6BE;
+}
+
+.nav-label, .action-label {
+  color: #ffffff;
+  font-size: 22px;
+  font-weight: bold;
+}
+
+.nav-label-dark, .action-label-dark {
+  color: #071713;
+}
+
+.empty {
+  width: 164px;
+  min-height: 154px;
+  margin-left: 14px;
+  margin-top: 18px;
+  padding-left: 12px;
+  padding-right: 12px;
+  border-radius: 8px;
+  background-color: #151517;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+}
+
+.empty-title {
+  color: #ffffff;
+  font-size: 24px;
+  font-weight: bold;
+}
+
+.empty-copy {
+  color: #8c8c94;
+  font-size: 18px;
+  text-align: center;
+  margin-top: 8px;
+}
+
+.list-spacer {
+  width: 192px;
+  height: 58px;
+}
+
+.timer-view {
+  align-items: center;
+}
+
+.timer-project {
+  width: 148px;
+  color: #ffffff;
+  font-size: 28px;
+  font-weight: bold;
+  text-align: center;
+  lines: 1;
+  text-overflow: ellipsis;
+  margin-top: 8px;
+}
+
+.timer-ring {
+  width: 172px;
+  height: 172px;
+  margin-top: 18px;
+  border-width: 4px;
+  border-radius: 86px;
+  background-color: #0b0b0c;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+}
+
+.timer-value {
+  color: #ffffff;
+  font-size: 42px;
+  font-weight: bold;
+}
+
+.timer-state {
+  color: #9c9ca4;
+  font-size: 18px;
+  margin-top: 5px;
+}
+
+.timer-actions {
+  width: 156px;
+  height: 62px;
+  margin-top: 16px;
+  flex-direction: row;
+  justify-content: space-between;
+}
+
+.action-button {
+  width: 74px;
+  height: 58px;
+  border-radius: 8px;
+  justify-content: center;
+  align-items: center;
+}
+
+.secondary {
+  background-color: #242428;
+}
+
+.complete {
+  background-color: #55D6BE;
+}
+
+.cancel-button {
+  width: 136px;
+  height: 42px;
+  margin-top: 4px;
+  justify-content: center;
+  align-items: center;
+}
+
+.cancel-label {
+  color: #92929a;
+  font-size: 18px;
+}
+
+.sub-header {
+  width: 152px;
+  height: 72px;
+  margin-left: 20px;
+  margin-right: 20px;
+  flex-direction: row;
+  align-items: center;
+}
+
+.back-button {
+  width: 44px;
+  height: 52px;
+  margin-right: 8px;
+  border-radius: 8px;
+  background-color: #1e1e21;
+  justify-content: center;
+  align-items: center;
+}
+
+.back-label {
+  color: #ffffff;
+  font-size: 34px;
+}
+
+.sub-copy {
+  width: 100px;
+}
+
+.sub-title {
+  color: #ffffff;
+  font-size: 26px;
+  font-weight: bold;
+  lines: 1;
+  text-overflow: ellipsis;
+}
+
+.record-list {
+  width: 192px;
+  height: 366px;
+}
+
+.record-row {
+  width: 172px;
+  height: 88px;
+  margin-left: 10px;
+  margin-right: 10px;
+  margin-bottom: 8px;
+  padding-left: 10px;
+  padding-right: 10px;
+  border-radius: 8px;
+  background-color: #171719;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.record-name {
+  width: 96px;
+}
+
+.record-meta {
+  width: 56px;
+  align-items: flex-end;
+}
+
+.record-duration {
+  color: #55D6BE;
+  font-size: 18px;
+  font-weight: bold;
+  text-align: right;
+}
+
+.manage-header {
+  width: 152px;
+  height: 104px;
+  margin-left: 20px;
+  margin-right: 20px;
+  flex-direction: column;
+}
+
+.manage-back-row {
+  width: 152px;
+  height: 56px;
+  flex-direction: row;
+  align-items: center;
+}
+
+.manage-count {
+  color: #9c9ca4;
+  font-size: 18px;
+  margin-left: 10px;
+}
+
+.manage-title {
+  width: 152px;
+  height: 42px;
+  color: #ffffff;
+  font-size: 28px;
+  font-weight: bold;
+  text-align: center;
+}
+
+.manage-list {
+  width: 192px;
+  height: 334px;
+}
+
+.section-row {
+  width: 172px;
+  height: 38px;
+  margin-left: 10px;
+  margin-right: 10px;
+  align-items: center;
+}
+
+.section-label {
+  width: 156px;
+  color: #9c9ca4;
+  font-size: 18px;
+}
+
+.custom-add-row {
+  width: 152px;
+  height: 64px;
+  margin-left: 20px;
+  margin-right: 20px;
+  margin-bottom: 10px;
+  border-radius: 8px;
+  background-color: #55D6BE;
+  flex-direction: row;
+  justify-content: center;
+  align-items: center;
+}
+
+.custom-add-plus {
+  color: #071713;
+  font-size: 30px;
+  font-weight: bold;
+  margin-right: 5px;
+}
+
+.custom-add-label {
+  color: #071713;
+  font-size: 22px;
+  font-weight: bold;
+}
+
+.manage-row {
+  width: 172px;
+  height: 72px;
+  margin-left: 10px;
+  margin-right: 10px;
+  margin-bottom: 8px;
+  padding-left: 10px;
+  padding-right: 9px;
+  border-radius: 8px;
+  background-color: #171719;
+  flex-direction: row;
+  align-items: center;
+}
+
+.preset-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 6px;
+  margin-right: 10px;
+}
+
+.managed-name {
+  width: 89px;
+}
+
+.delete-button {
+  width: 42px;
+  height: 50px;
+  border-radius: 8px;
+  background-color: #352022;
+  justify-content: center;
+  align-items: center;
+}
+
+.delete-label {
+  color: #ff7f87;
+  font-size: 20px;
+}
+
+</style>

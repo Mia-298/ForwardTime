@@ -1,0 +1,22 @@
+{
+  "name": "正计时同步",
+  "icon": "icon.png",
+  "version": "1.0.1",
+  "description": "小米手环 9 正计时记录同步、项目管理和历史查询",
+  "author": "ABox User",
+  "website": "https://abox.run/",
+  "entry": "main.js",
+  "api_level": 1,
+  "permissions": [
+    "config",
+    "lifecycle",
+    "ui",
+    "native",
+    "device",
+    "thirdpartyapp",
+    "interconnect",
+    "event"
+  ],
+  "additional_files": []
+}
+

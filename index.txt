@@ -1,0 +1,1 @@
+astrobox-plugin-v2/dist
