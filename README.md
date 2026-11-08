@@ -5,7 +5,7 @@
 这是一个双端工程：
 
 - `band-app`：运行在小米手环 9 标准版（192 x 490）的 Vela 快应用。
-- `astrobox-plugin-v2`：当前版本 `1.1.0`，API Level 4 手机配置插件，用于 iOS/桌面版 AstroBox 的项目管理和记录查询。
+- `astrobox-plugin-v2`：当前版本 `1.1.1`，API Level 4 手机配置插件，用于 iOS/桌面版 AstroBox 的项目管理和记录查询。
 - `astrobox-plugin`：旧版 API Level 1 插件，仅为兼容旧环境保留，不再作为 iPhone 版本使用。
 
 ## 已实现功能
@@ -47,7 +47,7 @@ python3 scripts/build_dist.py --release --package
 生成文件位于 `astrobox-plugin-v2/dist/正计时配置.abp`。已验证的发行副本为：
 
 ```text
-S:\data\personal\mi-band-9-timer\安装包\ForwardTimer-iOS-V4-1.1.0.abp
+S:\data\personal\mi-band-9-timer\安装包\ForwardTimer-iOS-V4-1.1.1.abp
 ```
 
 插件使用 API Level 4 和 WASI 3，功能包括：
@@ -55,6 +55,7 @@ S:\data\personal\mi-band-9-timer\安装包\ForwardTimer-iOS-V4-1.1.0.abp
 - 项目列表按“工作、阅读、学习、运动、娱乐、个人”分类显示。
 - 调用手机输入对话框新增项目或修改名称，名称最多 12 个字符。
 - 修改项目分类、确认删除，以及断线时保存待同步操作。
+- 每次同步前主动刷新手环快应用列表，避免 AstroBox 缓存未识别已安装应用。
 - 连接小米手环 9 后手动同步项目和删除标记。
 - 按日期查询历史记录，并按类别排序显示条数、总时长和完成时间。
 
@@ -67,8 +68,8 @@ API Level 4 插件可以在 AstroBox 的 iOS 运行时执行，但 iPhone 版 As
 ## 使用流程
 
 1. 在手环端安装或覆盖安装 `run.abox.forwardtimer.debug.1.0.4.rpk`。
-2. 从 AstroBox 插件市场/插件源安装“正计时配置”V4 插件；支持本地导入的平台也可直接导入 `ForwardTimer-iOS-V4-1.1.0.abp`。
-3. 在 AstroBox 中连接小米手环 9，打开插件并允许设备、互联接收和互联发送权限。
+2. 从 AstroBox 插件市场/插件源安装“正计时配置”V4 插件；支持本地导入的平台也可直接导入 `ForwardTimer-iOS-V4-1.1.1.abp`。
+3. 在 AstroBox 中连接小米手环 9，打开插件并允许设备、快应用列表、互联接收和互联发送权限。
 4. 打开插件后点击“立即同步”，先取得手环现有项目和历史记录。
 5. 在“项目管理”中添加、改名、改分类或删除项目；在线时会立即发送，离线时会保存在手机，下次点击“立即同步”继续同步。
 6. 在“历史记录”中使用“前一天 / 今天 / 后一天”查看往日数据。

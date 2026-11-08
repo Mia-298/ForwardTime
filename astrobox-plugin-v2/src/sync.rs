@@ -1,4 +1,4 @@
-use crate::astrobox::psys_host_v4::{device, interconnect, os, register};
+use crate::astrobox::psys_host_v4::{device, interconnect, os, register, thirdpartyapp};
 use crate::model::{
     Deletion, Envelope, PACKAGE_NAME, PROTOCOL, Project, Snapshot, envelope, merge_snapshot,
 };
@@ -79,15 +79,22 @@ async fn sync_connected() {
 
     state::with_state(|state| {
         state.syncing = true;
-        state.status = "正在同步...".to_string();
+        state.status = "正在刷新手环应用列表...".to_string();
     });
     ui::rerender();
 
-    let mut error: Option<String> = None;
-    for deletion in deletions {
-        if let Err(send_error) = send(&addr, "project_delete", &deletion).await {
-            error = Some(send_error);
-            break;
+    let mut error = refresh_quick_app(&addr).await.err();
+    if error.is_none() {
+        state::with_state(|state| {
+            state.status = "正在同步...".to_string();
+        });
+        ui::rerender();
+
+        for deletion in deletions {
+            if let Err(send_error) = send(&addr, "project_delete", &deletion).await {
+                error = Some(send_error);
+                break;
+            }
         }
     }
     if error.is_none() {
@@ -112,6 +119,37 @@ async fn sync_connected() {
         };
     });
     ui::rerender();
+}
+
+async fn refresh_quick_app(addr: &str) -> Result<(), String> {
+    let apps = thirdpartyapp::get_thirdparty_app_list(addr.to_string())
+        .await
+        .map_err(|error| format!("无法刷新手环应用列表：{}", error))?;
+
+    if apps.iter().any(|app| app.package_name == PACKAGE_NAME) {
+        return Ok(());
+    }
+
+    let installed = apps
+        .iter()
+        .map(|app| {
+            if app.app_name.trim().is_empty() {
+                app.package_name.clone()
+            } else {
+                format!("{} ({})", app.app_name, app.package_name)
+            }
+        })
+        .collect::<Vec<_>>();
+    let suffix = if installed.is_empty() {
+        "手环返回的快应用列表为空".to_string()
+    } else {
+        format!("手环当前返回：{}", installed.join("、"))
+    };
+
+    Err(format!(
+        "未发现正计时应用 {}；请打开手环正计时后重试。{}",
+        PACKAGE_NAME, suffix
+    ))
 }
 
 pub async fn send_project(project: &Project) -> Result<(), String> {
